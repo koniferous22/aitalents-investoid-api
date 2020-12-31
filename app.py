@@ -8,9 +8,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 # import torch. as optim
 # from torch.utils.data import DataLoader, Dataset
-import tensorflow as tf
-from tensorflow.keras.preprocessing.text import Tokenizer
-from tensorflow.keras.preprocessing.sequence import pad_sequences
+# import tensorflow as tf
+from keras_preprocessing import sequence, text
 import numpy as np
 
 pickles_dir = path.join(path.dirname(path.abspath(__file__)), 'torch-stuff')
@@ -75,7 +74,7 @@ def predict_day(text):
 
     try:
         x = tokenizer.texts_to_sequences([text])
-        x = pad_sequences(x, maxlen=length, truncating='post', padding='pre')
+        x = sequence.pad_sequences(x, maxlen=length, truncating='post', padding='pre')
         tensor = torch.tensor(x[0], dtype=torch.long).unsqueeze(0)
         x = day_net.forward(tensor)
         predicted_class = torch.max(x, dim=1)[1]
@@ -93,7 +92,7 @@ def predict_week(text):
 
     try:
         x = tokenizer.texts_to_sequences([text])
-        x = pad_sequences(x, maxlen=length, truncating='post', padding='pre')
+        x = sequence.pad_sequences(x, maxlen=length, truncating='post', padding='pre')
         tensor = torch.tensor(x[0], dtype=torch.long).unsqueeze(0)
         x = week_net.forward(tensor)
         predicted_class = torch.max(x, dim=1)[1]
