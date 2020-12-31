@@ -16,7 +16,7 @@ import numpy as np
 pickles_dir = path.join(path.dirname(path.abspath(__file__)), 'torch-stuff')
 tokenizer_path = path.join(pickles_dir, 'tokenizer.pt')
 day_model = path.join(pickles_dir, 'model_params_day.pt')
-week_model = path.join(pickles_dir, 'model_paras_week.pt')
+week_model = path.join(pickles_dir, 'model_params_week.pt')
 
 app = Flask(__name__)
 
@@ -65,14 +65,12 @@ device = 'cpu'
 tokenizer = torch.load(tokenizer_path)
 day_net = ConvNet().to(device)
 day_net.load_state_dict(torch.load(day_model))
-print(day_net.state_dict())
+week_net = ConvNet().to(device)
+week_net.load_state_dict(torch.load(week_model))
 
 
 @app.route('/predict_day/<text>', methods=['GET'])
 def predict_day(text):
-    # For debugging
-    print(f"got text {text}")
-
     response = {}
 
     try:
@@ -80,6 +78,24 @@ def predict_day(text):
         x = pad_sequences(x, maxlen=length, truncating='post', padding='pre')
         tensor = torch.tensor(x[0], dtype=torch.long).unsqueeze(0)
         x = day_net.forward(tensor)
+        predicted_class = torch.max(x, dim=1)[1]
+        response['class'] = predicted_class.item()
+        status = 200
+    except Exception as ex:
+        response['error'] = f'Encountered error for the input: {ex}'
+        status = 500
+    print(response)
+    return jsonify(response), status
+
+@app.route('/predict_week/<text>', methods=['GET'])
+def predict_week(text):
+    response = {}
+
+    try:
+        x = tokenizer.texts_to_sequences([text])
+        x = pad_sequences(x, maxlen=length, truncating='post', padding='pre')
+        tensor = torch.tensor(x[0], dtype=torch.long).unsqueeze(0)
+        x = week_net.forward(tensor)
         predicted_class = torch.max(x, dim=1)[1]
         response['class'] = predicted_class.item()
         status = 200
