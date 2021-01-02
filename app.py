@@ -1,6 +1,9 @@
 # app.py
 from flask import Flask, request, jsonify
 
+from flask_sqlalchemy import SQLAlchemy
+from flask_cors import CORS
+
 from os import path
 import torch
 # import sys
@@ -12,12 +15,40 @@ import torch.nn.functional as F
 from keras_preprocessing import sequence, text
 import numpy as np
 
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql+psycopg2://postgres:postgres_420@database-2.cbtmhzr7rp4s.eu-central-1.rds.amazonaws.com/postgres'
+CORS(app)
+db = SQLAlchemy(app)
+
+# class ArticleCompanyModel(db.Model):
+#     __tablename__ = 'article_companies'
+#     index = db.Column(db.Integer, primary_key=True)
+#     article_entity = db.Column(db.String(90), unique=True, nullable=False)
+#     nasdaq_entity = db.Column(db.String(50))
+#     nyse_entity = db.Column(db.String(50))
+#     nasdaq_label = db.Column(db.String(5))
+#     nyse_label = db.Column(db.String(5))
+
+#     def __repr__(self):
+#         return '<Company %r>' % self.article_entity
+
+# class ArticleReferenceModel(db.Model):
+#     __tablename__ = 'article_references'
+#     index = db.Column(db.Integer, primary_key=True)
+#     article_entity = db.Column(db.String(90), unique=True, nullable=False)
+#     nasdaq_entity = db.Column(db.String(50))
+#     nyse_entity = db.Column(db.String(50))
+#     nasdaq_label = db.Column(db.String(5))
+#     nyse_label = db.Column(db.String(5))
+
+#     def __repr__(self):
+#         return '<Company %r>' % self.article_entity
+
 pickles_dir = path.join(path.dirname(path.abspath(__file__)), 'torch-stuff')
 tokenizer_path = path.join(pickles_dir, 'tokenizer.pt')
 day_model = path.join(pickles_dir, 'model_params_day.pt')
 week_model = path.join(pickles_dir, 'model_params_week.pt')
-
-app = Flask(__name__)
 
 vocabulary = 10000
 length = 15
@@ -34,25 +65,13 @@ class ConvNet(nn.Module):
         self.fc2 = nn.Linear(in_features=32 * len(self.convolutions), out_features=2)
 
     def forward(self, x):
-        print(x.size())
-        print('Applying Embeddings')
         x = self.embeddings(x)
-        print(x.size())
-        print('Uniqueezing shit')
         x = torch.unsqueeze(x, dim=1)
-        print(x.size())
-        print('Applying covolutinns')
         xs = []
         for index,convolution in enumerate(self.convolutions, start=1):
-            print(f'Convolution {index}: applying softplus')
             c = F.softplus(convolution(x))
-            print(c.shape)
-            print(f'Convolution {index}: squeeze')
             c = torch.squeeze(c, 3)
-            print(c.shape)
-            print(f'Convolution {index}: max pooling')
             c = F.max_pool1d(c, kernel_size=c.size()[2])
-            print(c.shape)
             xs.append(c)
         x = torch.cat(xs, dim=2)
         x = x.view(x.size(0), -1)
