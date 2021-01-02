@@ -137,7 +137,7 @@ def search(text):
 def sayt(text):
     response = {}
     try:
-        sql = select([article_companies.c.]).where(
+        sql = select([article_companies.c.article_entity]).where(
             article_companies.c.search_index.match(f'{text}:*', postgresql_regconfig='english')
         )
         print(sql)
@@ -147,11 +147,6 @@ def sayt(text):
         response['error'] = f'Encountered error for the input: {ex}'
         status = 500
     return jsonify(response), status
-
-# A welcome message to test our server
-@app.route('/')
-def index():
-    return "<h1>Welcome to our server !!</h1>"
 
 if __name__ == '__main__':
     # Threaded option to enable multiple instances for multiple user access support
