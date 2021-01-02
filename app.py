@@ -1,49 +1,46 @@
 # app.py
+import atexit
 from flask import Flask, request, jsonify
-
-from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS
+
+from sqlalchemy import create_engine, select, Table, Column, Integer, String, MetaData, ForeignKey, Text
+from sqlalchemy.dialects.postgresql import TSVECTOR
 
 from os import path
 import torch
-# import sys
 import torch.nn as nn
 import torch.nn.functional as F
-# import torch. as optim
-# from torch.utils.data import DataLoader, Dataset
-# import tensorflow as tf
 from keras_preprocessing import sequence, text
 import numpy as np
 
+metadata = MetaData()
+article_companies = Table('article_companies', metadata,
+    Column('id', Integer, primary_key=True),
+    Column('article_entity', String(90), unique=True, nullable=False),
+    Column('nasdaq_entity', String(50)),
+    Column('nyse_entity', String(50)),
+    Column('nasdaq_label', String(5)),
+    Column('nyse_label', String(5)),
+    Column('relevance', Integer),
+    Column('search_index', TSVECTOR),
+)
+
+addresses = Table('article_references', metadata,
+  Column('id', Integer, primary_key=True),
+  Column('article_entity', Integer, ForeignKey('article_companies.id')),
+  Column('title', String(300), nullable=False),
+  Column('title', Text, nullable=False),
+)
 
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql+psycopg2://postgres:postgres_420@database-2.cbtmhzr7rp4s.eu-central-1.rds.amazonaws.com/postgres'
+engine = create_engine('postgresql+psycopg2://postgres:postgres_420@database-2.cbtmhzr7rp4s.eu-central-1.rds.amazonaws.com/postgres')
+conn = engine.connect()
+def exit_handler():
+    print('Closing db connection')
+    conn.close()
+
+atexit.register(exit_handler)
 CORS(app)
-db = SQLAlchemy(app)
-
-# class ArticleCompanyModel(db.Model):
-#     __tablename__ = 'article_companies'
-#     index = db.Column(db.Integer, primary_key=True)
-#     article_entity = db.Column(db.String(90), unique=True, nullable=False)
-#     nasdaq_entity = db.Column(db.String(50))
-#     nyse_entity = db.Column(db.String(50))
-#     nasdaq_label = db.Column(db.String(5))
-#     nyse_label = db.Column(db.String(5))
-
-#     def __repr__(self):
-#         return '<Company %r>' % self.article_entity
-
-# class ArticleReferenceModel(db.Model):
-#     __tablename__ = 'article_references'
-#     index = db.Column(db.Integer, primary_key=True)
-#     article_entity = db.Column(db.String(90), unique=True, nullable=False)
-#     nasdaq_entity = db.Column(db.String(50))
-#     nyse_entity = db.Column(db.String(50))
-#     nasdaq_label = db.Column(db.String(5))
-#     nyse_label = db.Column(db.String(5))
-
-#     def __repr__(self):
-#         return '<Company %r>' % self.article_entity
 
 pickles_dir = path.join(path.dirname(path.abspath(__file__)), 'torch-stuff')
 tokenizer_path = path.join(pickles_dir, 'tokenizer.pt')
@@ -86,6 +83,7 @@ day_net.load_state_dict(torch.load(day_model))
 week_net = ConvNet().to(device)
 week_net.load_state_dict(torch.load(week_model))
 
+# https://docs.sqlalchemy.org/en/14/dialects/postgresql.html#dialect-postgresql
 
 @app.route('/predict_day/<text>', methods=['GET'])
 def predict_day(text):
@@ -96,8 +94,7 @@ def predict_day(text):
         x = sequence.pad_sequences(x, maxlen=length, truncating='post', padding='pre')
         tensor = torch.tensor(x[0], dtype=torch.long).unsqueeze(0)
         x = day_net.forward(tensor)
-        predicted_class = torch.max(x, dim=1)[1]
-        response['class'] = predicted_class.item()
+        response['softmaxResult'] = tensor.tolist()
         status = 200
     except Exception as ex:
         response['error'] = f'Encountered error for the input: {ex}'
@@ -114,13 +111,41 @@ def predict_week(text):
         x = sequence.pad_sequences(x, maxlen=length, truncating='post', padding='pre')
         tensor = torch.tensor(x[0], dtype=torch.long).unsqueeze(0)
         x = week_net.forward(tensor)
-        predicted_class = torch.max(x, dim=1)[1]
-        response['class'] = predicted_class.item()
+        response['softmaxResult'] = tensor.tolist()
         status = 200
     except Exception as ex:
         response['error'] = f'Encountered error for the input: {ex}'
         status = 500
-    print(response)
+    return jsonify(response), status
+
+@app.route('/search/<text>', methods=['GET'])
+def search(text):
+    response = {}
+    try:
+        sql = select([article_companies.c.id]).where(
+            article_companies.c.search_index.match(f'{text}:*', postgresql_regconfig='english')
+        )
+        print(sql)
+        response['found_ids'] = [ row[0] for row in conn.execute(sql) ]
+        status = 200
+    except Exception as ex:
+        response['error'] = f'Encountered error for the input: {ex}'
+        status = 500
+    return jsonify(response), status
+
+@app.route('/sayt/<text>', methods=['GET'])
+def sayt(text):
+    response = {}
+    try:
+        sql = select([article_companies.c.]).where(
+            article_companies.c.search_index.match(f'{text}:*', postgresql_regconfig='english')
+        )
+        print(sql)
+        response['found_ids'] = [ row[0] for row in conn.execute(sql) ]
+        status = 200
+    except Exception as ex:
+        response['error'] = f'Encountered error for the input: {ex}'
+        status = 500
     return jsonify(response), status
 
 # A welcome message to test our server
