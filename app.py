@@ -3,7 +3,7 @@ import atexit
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-from sqlalchemy import create_engine, select, Table, Column, Integer, String, MetaData, ForeignKey, Text
+from sqlalchemy import create_engine, select, Table, Column, Integer, String, MetaData, ForeignKey, Text, column, desc
 from sqlalchemy.dialects.postgresql import TSVECTOR
 
 from os import path
@@ -25,7 +25,7 @@ article_companies = Table('article_companies', metadata,
     Column('search_index', TSVECTOR),
 )
 
-addresses = Table('article_references', metadata,
+article_references = Table('article_references', metadata,
   Column('id', Integer, primary_key=True),
   Column('article_entity', Integer, ForeignKey('article_companies.id')),
   Column('title', String(300), nullable=False),
@@ -124,7 +124,7 @@ def search(text):
     try:
         sql = select([article_companies.c.id]).where(
             article_companies.c.search_index.match(f'{text}:*', postgresql_regconfig='english')
-        )
+        ).order_by(desc(article_companies.c.relevance))
         print(sql)
         response['found_ids'] = [ row[0] for row in conn.execute(sql) ]
         status = 200
@@ -133,20 +133,85 @@ def search(text):
         status = 500
     return jsonify(response), status
 
+def format_sayt(row):
+    if not (row[3] is None and row[1]) is None:
+        return f'[{row[3]}] {row[1]}'
+    if not (row[4] is None and row[2] is None):
+        return f'[{row[4]}] {row[2]}'
+    return row[0]
+
 @app.route('/sayt/<text>', methods=['GET'])
 def sayt(text):
     response = {}
     try:
-        sql = select([article_companies.c.article_entity]).where(
+        sql = select(map(column, ['article_entity', 'nasdaq_entity', 'nyse_entity', 'nasdaq_label', 'nyse_label'])).where(
             article_companies.c.search_index.match(f'{text}:*', postgresql_regconfig='english')
-        )
-        print(sql)
-        response['found_ids'] = [ row[0] for row in conn.execute(sql) ]
+        ).order_by(desc(article_companies.c.relevance)).limit(12)
+        response['found_ids'] = [ format_sayt(row) for row in conn.execute(sql) ]
         status = 200
     except Exception as ex:
         response['error'] = f'Encountered error for the input: {ex}'
         status = 500
     return jsonify(response), status
+
+def process_result(response, model):
+    titles = list(map(lambda row: row[5], response))
+    x = tokenizer.texts_to_sequences(titles)
+    x = sequence.pad_sequences(x, maxlen=length, truncating='post', padding='pre')
+    tensor = torch.tensor(x, dtype=torch.long)
+    x = model.forward(tensor)
+    predictions = x.tolist()
+    return [
+        {
+            'foundBy': row[0],
+            'entity': row[2] if row[1] is None else row[1],
+            'stockLabel': row[4] if row[3] is None else row[3],
+            'title': row[5],
+            'text': row[6],
+            'prediction': prediction
+        } for row,prediction in zip(response, predictions)
+    ]
+
+@app.route('/results_day', methods=['GET'])
+def results_day():
+    response = {}
+    # ids = request.args.getlist('id')
+    ids = request.args.getlist('id[]')
+    try:
+        sql = select(
+            [article_companies.c.article_entity] + list(map(column, ['nasdaq_entity', 'nyse_entity', 'nasdaq_label', 'nyse_label', 'title', 'text']))
+        ).select_from(
+            article_companies.join(article_references)
+        ).where(
+            article_companies.c.id.in_(tuple(ids))
+        ).order_by(desc(article_companies.c.relevance))
+        response = process_result(list(conn.execute(sql)), day_net)
+        status = 200
+    except Exception as ex:
+        response['error'] = f'Encountered error for the input: {ex}'
+        status = 500
+    return jsonify(response), status
+
+@app.route('/results_week', methods=['GET'])
+def results_week():
+    response = {}
+    # ids = request.args.getlist('id')
+    ids = request.args.getlist('id[]')
+    try:
+        sql = select(
+            [article_companies.c.article_entity] + list(map(column, ['nasdaq_entity', 'nyse_entity', 'nasdaq_label', 'nyse_label', 'title', 'text']))
+        ).select_from(
+            article_companies.join(article_references)
+        ).where(
+            article_companies.c.id.in_(tuple(ids))
+        ).order_by(desc(article_companies.c.relevance))
+        response = process_result(list(conn.execute(sql)), week_net)
+        status = 200
+    except Exception as ex:
+        response['error'] = f'Encountered error for the input: {ex}'
+        status = 500
+    return jsonify(response), status
+
 
 if __name__ == '__main__':
     # Threaded option to enable multiple instances for multiple user access support
