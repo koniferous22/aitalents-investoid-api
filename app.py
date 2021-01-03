@@ -99,7 +99,9 @@ def predict_day(text):
         x = sequence.pad_sequences(x, maxlen=length, truncating='post', padding='pre')
         tensor = torch.tensor(x[0], dtype=torch.long).unsqueeze(0)
         x = day_net.forward(tensor)
-        response['softmaxResult'] = x.tolist()[0]
+        response['logits'] = x.tolist()[0]
+        response['class'] = torch.max(x, dim=1)[1].item()
+        response['softmax'] = F.softmax(x, dim=1).tolist()[0]
         status = 200
     except Exception as ex:
         response['error'] = f'Encountered error for the input: {ex}'
@@ -115,7 +117,9 @@ def predict_week(text):
         x = sequence.pad_sequences(x, maxlen=length, truncating='post', padding='pre')
         tensor = torch.tensor(x[0], dtype=torch.long).unsqueeze(0)
         x = week_net.forward(tensor)
-        response['softmaxResult'] = x.tolist()[0]
+        response['logits'] = x.tolist()[0]
+        response['class'] = torch.max(x, dim=1)[1].item()
+        response['softmax'] = F.softmax(x, dim=1).tolist()[0]
         status = 200
     except Exception as ex:
         response['error'] = f'Encountered error for the input: {ex}'
