@@ -3,8 +3,9 @@ import atexit
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from math import isnan
 
-from sqlalchemy import create_engine, select, Table, Column, Integer, String, MetaData, ForeignKey, Text, column, desc
+from sqlalchemy import create_engine, select, Table, Column, Integer, String, MetaData, ForeignKey, Text, column, desc, func
 from sqlalchemy.dialects.postgresql import TSVECTOR
 
 from os import path, getenv
@@ -188,19 +189,30 @@ def process_result(response, model):
         } for row, logits, class_, softmax in zip(response, logits_list, classes, softmax_list)
     ]
 
+PAGE_SIZE = 20
+
 @app.route('/results_day', methods=['GET'])
 def results_day():
     response = {}
-    # ids = request.args.getlist('id')
-    ids = request.args.getlist('id[]')
+    ids = request.args.getlist('id')
+    page = request.args.get('page')
     try:
+        if not page.isdigit() or int(page) < 1:
+            return jsonify({ 'error': f'Invalid page value: "{page}"' }), 400
+        page = int(page)           
+        table_join = article_companies.join(article_references)
         sql = select(
             [article_companies.c.article_entity] + list(map(column, ['nasdaq_entity', 'nyse_entity', 'nasdaq_label', 'nyse_label', 'title', 'text']))
         ).select_from(
-            article_companies.join(article_references)
+            table_join
         ).where(
             article_companies.c.id.in_(tuple(ids))
-        ).order_by(desc(article_companies.c.relevance))
+        ).order_by(
+            desc(article_companies.c.relevance)
+        ).offset(PAGE_SIZE * (page - 1)).limit(PAGE_SIZE)
+        count_sql = select([func.count()]).select_from(table_join).where(article_companies.c.id.in_(tuple(ids)))
+        count = conn.execute(count_sql).scalar()
+        response['pageCount'] = count // PAGE_SIZE + (1 if count % PAGE_SIZE > 0 else 0)
         response = process_result(list(conn.execute(sql)), day_net)
         status = 200
     except Exception as ex:
@@ -212,16 +224,26 @@ def results_day():
 def results_week():
     response = {}
     # ids = request.args.getlist('id')
-    ids = request.args.getlist('id[]')
+    ids = request.args.getlist('id')
+    page = request.args.get('page')
     try:
+        if not page.isdigit() or int(page) < 1:
+            return jsonify({ 'error': f'Invalid page value: "{page}"' }), 400
+        page = int(page)           
+        table_join = article_companies.join(article_references)
         sql = select(
             [article_companies.c.article_entity] + list(map(column, ['nasdaq_entity', 'nyse_entity', 'nasdaq_label', 'nyse_label', 'title', 'text']))
         ).select_from(
-            article_companies.join(article_references)
+            table_join
         ).where(
             article_companies.c.id.in_(tuple(ids))
-        ).order_by(desc(article_companies.c.relevance))
-        response = process_result(list(conn.execute(sql)), week_net)
+        ).order_by(
+            desc(article_companies.c.relevance)
+        ).offset(PAGE_SIZE * (page - 1)).limit(PAGE_SIZE)
+        count_sql = select([func.count()]).select_from(table_join).where(article_companies.c.id.in_(tuple(ids)))
+        count = conn.execute(count_sql).scalar()
+        response['pageCount'] = count // PAGE_SIZE + (1 if count % PAGE_SIZE > 0 else 0)
+        response['data'] = process_result(list(conn.execute(sql)), week_net)
         status = 200
     except Exception as ex:
         response['error'] = f'Encountered error for the input: {ex}'
