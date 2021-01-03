@@ -141,20 +141,25 @@ def search(text):
     return jsonify(response), status
 
 def format_sayt(row):
-    if not (row[3] is None and row[1]) is None:
-        return f'[{row[3]}] {row[1]}'
-    if not (row[4] is None and row[2] is None):
+    if not (row[4] is None and row[2]) is None:
         return f'[{row[4]}] {row[2]}'
-    return row[0]
+    if not (row[5] is None and row[3] is None):
+        return f'[{row[5]}] {row[3]}'
+    return row[1]
 
 @app.route('/sayt/<text>', methods=['GET'])
 def sayt(text):
     response = {}
     try:
-        sql = select(map(column, ['article_entity', 'nasdaq_entity', 'nyse_entity', 'nasdaq_label', 'nyse_label'])).where(
+        sql = select(map(column, ['id', 'article_entity', 'nasdaq_entity', 'nyse_entity', 'nasdaq_label', 'nyse_label'])).where(
             article_companies.c.search_index.match(f'{text}:*', postgresql_regconfig='english')
         ).order_by(desc(article_companies.c.relevance)).limit(12)
-        response['found_companies'] = [ format_sayt(row) for row in conn.execute(sql) ]
+        response['found_companies'] = [ 
+            {
+                'id': row[0],
+                'suggestion': format_sayt(row)
+            } for row in conn.execute(sql)
+        ]
         status = 200
     except Exception as ex:
         response['error'] = f'Encountered error for the input: {ex}'
