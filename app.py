@@ -1,17 +1,23 @@
 # app.py
 import atexit
+from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
 from sqlalchemy import create_engine, select, Table, Column, Integer, String, MetaData, ForeignKey, Text, column, desc
 from sqlalchemy.dialects.postgresql import TSVECTOR
 
-from os import path
+from os import path, getenv
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from keras_preprocessing import sequence, text
 import numpy as np
+
+dotenv_path = path.join(path.dirname(__file__), '.env')
+if path.isfile(dotenv_path):
+    print('Kokotko')
+    load_dotenv(dotenv_path)
 
 metadata = MetaData()
 article_companies = Table('article_companies', metadata,
@@ -33,7 +39,7 @@ article_references = Table('article_references', metadata,
 )
 
 app = Flask(__name__)
-engine = create_engine('postgresql+psycopg2://postgres:postgres_420@database-2.cbtmhzr7rp4s.eu-central-1.rds.amazonaws.com/postgres')
+engine = create_engine(getenv('DB_CONFIG'))
 conn = engine.connect()
 def exit_handler():
     print('Closing db connection')
