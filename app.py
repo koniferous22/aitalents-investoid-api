@@ -213,7 +213,7 @@ def results_day():
         count_sql = select([func.count()]).select_from(table_join).where(article_companies.c.id.in_(tuple(ids)))
         count = conn.execute(count_sql).scalar()
         response['pageCount'] = count // PAGE_SIZE + (1 if count % PAGE_SIZE > 0 else 0)
-        response = process_result(list(conn.execute(sql)), day_net)
+        response['data'] = process_result(list(conn.execute(sql)), day_net)
         status = 200
     except Exception as ex:
         response['error'] = f'Encountered error for the input: {ex}'
