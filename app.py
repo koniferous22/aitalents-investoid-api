@@ -154,7 +154,7 @@ def sayt(text):
         sql = select(map(column, ['article_entity', 'nasdaq_entity', 'nyse_entity', 'nasdaq_label', 'nyse_label'])).where(
             article_companies.c.search_index.match(f'{text}:*', postgresql_regconfig='english')
         ).order_by(desc(article_companies.c.relevance)).limit(12)
-        response['found_ids'] = [ format_sayt(row) for row in conn.execute(sql) ]
+        response['found_companies'] = [ format_sayt(row) for row in conn.execute(sql) ]
         status = 200
     except Exception as ex:
         response['error'] = f'Encountered error for the input: {ex}'
@@ -167,7 +167,9 @@ def process_result(response, model):
     x = sequence.pad_sequences(x, maxlen=length, truncating='post', padding='pre')
     tensor = torch.tensor(x, dtype=torch.long)
     x = model.forward(tensor)
-    predictions = x.tolist()
+    logits_list = x.tolist()
+    softmax_list = F.softmax(x, dim=1).tolist()
+    classes = torch.max(x, dim=1)[1].tolist()
     return [
         {
             'foundBy': row[0],
@@ -175,8 +177,10 @@ def process_result(response, model):
             'stockLabel': row[4] if row[3] is None else row[3],
             'title': row[5],
             'text': row[6],
-            'prediction': prediction
-        } for row,prediction in zip(response, predictions)
+            'class': class_,
+            'softmax': softmax,
+            'logits': logits,
+        } for row, logits, class_, softmax in zip(response, logits_list, classes, softmax_list)
     ]
 
 @app.route('/results_day', methods=['GET'])
