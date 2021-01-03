@@ -16,7 +16,6 @@ import numpy as np
 
 dotenv_path = path.join(path.dirname(__file__), '.env')
 if path.isfile(dotenv_path):
-    print('Kokotko')
     load_dotenv(dotenv_path)
 
 metadata = MetaData()
@@ -105,7 +104,6 @@ def predict_day(text):
     except Exception as ex:
         response['error'] = f'Encountered error for the input: {ex}'
         status = 500
-    print(response)
     return jsonify(response), status
 
 @app.route('/predict_week/<text>', methods=['GET'])
@@ -131,7 +129,6 @@ def search(text):
         sql = select([article_companies.c.id]).where(
             article_companies.c.search_index.match(f'{text}:*', postgresql_regconfig='english')
         ).order_by(desc(article_companies.c.relevance))
-        print(sql)
         response['found_ids'] = [ row[0] for row in conn.execute(sql) ]
         status = 200
     except Exception as ex:
